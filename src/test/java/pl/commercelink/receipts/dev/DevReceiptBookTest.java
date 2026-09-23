@@ -74,12 +74,13 @@ class DevReceiptBookTest {
         Receipt issued = book.issue(KEY, DevReceiptScenario.PENDING);
 
         // when
+        Receipt foundBeforeFetch = book.find(KEY).orElseThrow();
         Receipt firstFetch = book.fetch(issued.providerReceiptId());
         Receipt secondFetch = book.fetch(issued.providerReceiptId());
 
         // then
         assertEquals(ReceiptState.PENDING, issued.state());
-        assertEquals(ReceiptState.PENDING, book.find(KEY).orElseThrow().state());
+        assertEquals(ReceiptState.PENDING, foundBeforeFetch.state());
         assertEquals(ReceiptState.PENDING, firstFetch.state());
         assertEquals(ReceiptState.FISCALISED, secondFetch.state());
         assertEquals(FIRST_URL, secondFetch.documentUrl());
