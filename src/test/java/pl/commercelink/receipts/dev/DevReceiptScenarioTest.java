@@ -2,6 +2,7 @@ package pl.commercelink.receipts.dev;
 
 import org.junit.jupiter.api.Test;
 import pl.commercelink.receipts.api.ReceiptException;
+import pl.commercelink.receipts.api.ReceiptLineNames;
 import pl.commercelink.receipts.api.ReceiptValidationException;
 
 import java.util.List;
@@ -18,7 +19,7 @@ class DevReceiptScenarioTest {
     @Test
     void linesWithoutMarkerGiveDefault() {
         // when
-        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel HDMI 2m", "HDMI-2")));
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel HDMI 2m", "HDMI-2")), 40);
 
         // then
         assertEquals(DevReceiptScenario.DEFAULT, scenario);
@@ -27,7 +28,7 @@ class DevReceiptScenarioTest {
     @Test
     void markerInNameIsFoundAnywhereAndIgnoresCase() {
         // when
-        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel sim-receipt-pending 2m")));
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel sim-receipt-pending 2m")), 40);
 
         // then
         assertEquals(DevReceiptScenario.PENDING, scenario);
@@ -36,7 +37,7 @@ class DevReceiptScenarioTest {
     @Test
     void markerInSkuIsFound() {
         // when
-        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel HDMI 2m", "SIM-RECEIPT-STUCK")));
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel HDMI 2m", "SIM-RECEIPT-STUCK")), 40);
 
         // then
         assertEquals(DevReceiptScenario.STUCK, scenario);
@@ -48,7 +49,7 @@ class DevReceiptScenarioTest {
         DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(
                 goods("Kabel HDMI 2m"),
                 goods("SIM-RECEIPT-FAIL"),
-                goods("SIM-RECEIPT-STUCK")));
+                goods("SIM-RECEIPT-STUCK")), 40);
 
         // then
         assertEquals(DevReceiptScenario.FAIL, scenario);
@@ -57,7 +58,7 @@ class DevReceiptScenarioTest {
     @Test
     void nameMarkerWinsOverSkuMarkerOfTheSameLine() {
         // when
-        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-NOLINK", "SIM-RECEIPT-STUCK")));
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-NOLINK", "SIM-RECEIPT-STUCK")), 40);
 
         // then
         assertEquals(DevReceiptScenario.NOLINK, scenario);
@@ -66,8 +67,8 @@ class DevReceiptScenarioTest {
     @Test
     void longerMarkerIsMatchedWhole() {
         // when
-        DevReceiptScenario unordered = DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-UNKNOWN-UNORDERED")));
-        DevReceiptScenario never = DevReceiptScenario.fromLines(List.of(goods("Etui SIM-RECEIPT-NOLINK-NEVER")));
+        DevReceiptScenario unordered = DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-UNKNOWN-UNORDERED")), 40);
+        DevReceiptScenario never = DevReceiptScenario.fromLines(List.of(goods("Etui SIM-RECEIPT-NOLINK-NEVER")), 40);
 
         // then
         assertEquals(DevReceiptScenario.UNKNOWN_UNORDERED, unordered);
@@ -81,7 +82,7 @@ class DevReceiptScenarioTest {
                 continue;
             }
             // when
-            DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Produkt " + expected.marker())));
+            DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Produkt " + expected.marker())), 40);
 
             // then
             assertEquals(expected, scenario);
@@ -92,7 +93,7 @@ class DevReceiptScenarioTest {
     void unknownMarkerIsRefused() {
         // when / then
         ReceiptValidationException e = assertThrows(ReceiptValidationException.class,
-                () -> DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-PENDNG"))));
+                () -> DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-PENDNG")), 40));
         assertTrue(e.getMessage().contains("SIM-RECEIPT-PENDNG"));
     }
 
@@ -100,8 +101,81 @@ class DevReceiptScenarioTest {
     void markerGluedToFollowingWordIsAnUnknownMarker() {
         // when / then
         ReceiptValidationException e = assertThrows(ReceiptValidationException.class,
-                () -> DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-PENDING-KABEL"))));
+                () -> DevReceiptScenario.fromLines(List.of(goods("SIM-RECEIPT-PENDING-KABEL")), 40));
         assertTrue(e.getMessage().contains("SIM-RECEIPT-PENDING-KABEL"));
+    }
+
+    @Test
+    void markerCutToAPrefixOfALongerMarkerIsRefused() {
+        // given
+        String name = ReceiptLineNames.normalize("Etui na telefon abc SIM-RECEIPT-UNKNOWN-UNORDERED", 40);
+
+        // when / then
+        ReceiptValidationException e = assertThrows(ReceiptValidationException.class,
+                () -> DevReceiptScenario.fromLines(List.of(goods(name)), 40));
+        assertTrue(e.getMessage().contains("SIM-RECEIPT-UNKNOWN"));
+        assertTrue(e.getMessage().contains("SKU"));
+    }
+
+    @Test
+    void markerCutToTheBareMarkerPrefixIsRefused() {
+        // given
+        String name = ReceiptLineNames.normalize("A".repeat(27) + " SIM-RECEIPT-PENDING", 40);
+        assertEquals(40, name.length());
+
+        // when / then
+        ReceiptValidationException e = assertThrows(ReceiptValidationException.class,
+                () -> DevReceiptScenario.fromLines(List.of(goods(name)), 40));
+        assertTrue(e.getMessage().contains("SIM-RECEIPT-"));
+    }
+
+    @Test
+    void wholeMarkerAtTheLimitIsAccepted() {
+        // given
+        String name = ReceiptLineNames.normalize("B".repeat(20) + " SIM-RECEIPT-PENDING", 40);
+        assertEquals(40, name.length());
+
+        // when
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods(name)), 40);
+
+        // then
+        assertEquals(DevReceiptScenario.PENDING, scenario);
+    }
+
+    @Test
+    void shortNameEndingInMarkerPrefixIsNotRefused() {
+        // when
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods("Kabel SIM-RECEIPT-UNKNOWN")), 40);
+
+        // then
+        assertEquals(DevReceiptScenario.UNKNOWN, scenario);
+    }
+
+    @Test
+    void longNameWithMarkerInSkuIsAccepted() {
+        // given
+        String name = ReceiptLineNames.normalize("C".repeat(50), 40);
+        assertEquals(40, name.length());
+
+        // when
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(
+                List.of(goods(name, "SIM-RECEIPT-NOLINK-NEVER")), 40);
+
+        // then
+        assertEquals(DevReceiptScenario.NOLINK_NEVER, scenario);
+    }
+
+    @Test
+    void ordinaryFortyCharacterNameEndingInSIsDefault() {
+        // given
+        String name = ReceiptLineNames.normalize("F".repeat(33) + " CABLES", 40);
+        assertEquals(40, name.length());
+
+        // when
+        DevReceiptScenario scenario = DevReceiptScenario.fromLines(List.of(goods(name)), 40);
+
+        // then
+        assertEquals(DevReceiptScenario.DEFAULT, scenario);
     }
 
     @Test

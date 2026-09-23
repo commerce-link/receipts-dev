@@ -114,6 +114,8 @@ final class DevReceiptBook {
         if (byProviderId.containsKey(providerReceiptId)) {
             return;
         }
+        // Contract-kit seam only: uses the caller-chosen providerReceiptId as the receipt number too; a real
+        // receipt's number is always <bootStamp>-<seq>, as create() gives it.
         Entry entry = new Entry(receiptKey, providerReceiptId, providerReceiptId, DevReceiptScenario.STUCK);
         entry.ordered = true;
         register(entry);

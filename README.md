@@ -44,6 +44,14 @@ receipt key: a new key always gets a fresh first attempt.
 An unknown marker (`SIM-RECEIPT-PENDNG`, or a marker glued to the next word as in `SIM-RECEIPT-PENDING-KABEL`) is
 refused with `ReceiptValidationException` instead of silently giving the default.
 
+The app cuts line names to 40 characters (`ReceiptLineNames.normalize`) before issuing — put the marker at the
+start of the name or in the SKU. A marker cut by that limit (`SIM-RECEIPT-UNKNOWN-UNORDERED` shortened to
+`SIM-RECEIPT-UNKNOWN`, for example) is refused with `ReceiptValidationException` rather than silently resolving as
+a different, shorter scenario.
+
+An unknown or cut marker in the lines is refused even when `scenarioOverride` is set — the lines are always
+checked, whatever the store's override says.
+
 ### Store override
 
 The optional configuration field `scenarioOverride` forces one scenario for **every** receipt of the store, whatever
@@ -86,6 +94,7 @@ SECRET='the store webhookSecret'
 BODY='dev-20260923T101500Z-000042 FISCALISED'
 SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" | awk '{print $NF}')
 curl -X POST "http://localhost:8080/Store/<storeId>/Webhooks/Receipts/receipts-dev" \
+     -H 'Content-Type: text/plain' \
      -H "X-Receipts-Dev-Signature: $SIG" --data-binary "$BODY"
 ```
 

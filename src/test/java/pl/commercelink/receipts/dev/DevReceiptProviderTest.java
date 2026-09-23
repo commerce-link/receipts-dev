@@ -3,6 +3,7 @@ package pl.commercelink.receipts.dev;
 import org.junit.jupiter.api.Test;
 import pl.commercelink.receipts.api.Receipt;
 import pl.commercelink.receipts.api.ReceiptException;
+import pl.commercelink.receipts.api.ReceiptLineNames;
 import pl.commercelink.receipts.api.ReceiptMedium;
 import pl.commercelink.receipts.api.ReceiptOutcomeUnknownException;
 import pl.commercelink.receipts.api.ReceiptRequest;
@@ -82,6 +83,17 @@ class DevReceiptProviderTest {
         // when / then
         assertThrows(ReceiptValidationException.class,
                 () -> provider.issue(request("o-1:R1", goods("SIM-RECEIPT-PENDNG"))));
+        assertEquals(0, book.remoteCalls());
+    }
+
+    @Test
+    void markerCutByTheNameLimitIsRefusedBeforeAnyRemoteCall() {
+        // given
+        DevReceiptProvider provider = new DevReceiptProvider(book, null);
+        String name = ReceiptLineNames.normalize("Etui na telefon abc SIM-RECEIPT-UNKNOWN-UNORDERED", 40);
+
+        // when / then
+        assertThrows(ReceiptValidationException.class, () -> provider.issue(request("o-1:R1", goods(name))));
         assertEquals(0, book.remoteCalls());
     }
 

@@ -25,7 +25,7 @@ final class DevReceiptProvider implements ReceiptProvider {
     @Override
     public Receipt issue(ReceiptRequest request) {
         DevReceiptRequestRules.check(request, maxLineNameLength());
-        DevReceiptScenario fromLines = DevReceiptScenario.fromLines(request.lines());
+        DevReceiptScenario fromLines = DevReceiptScenario.fromLines(request.lines(), maxLineNameLength());
         DevReceiptScenario scenario = DevReceiptScenario.fromOverride(scenarioOverride).orElse(fromLines);
         return book.issue(request.receiptKey(), scenario);
     }

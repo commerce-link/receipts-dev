@@ -46,6 +46,14 @@
             <version>0.1.0</version>
         </dependency>
         <dependency>
+            <!-- Main code imports pl.commercelink.provider.api.* directly; keep this pinned to the version
+                 receipts-api 0.1.0 itself uses. -->
+            <groupId>pl.commercelink</groupId>
+            <artifactId>provider-api</artifactId>
+            <version>0.1.6</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
             <version>5.10.2</version>

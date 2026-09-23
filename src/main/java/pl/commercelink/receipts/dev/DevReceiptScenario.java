@@ -56,9 +56,15 @@ enum DevReceiptScenario {
     /**
      * The scenario of the first line carrying a marker, looking at each line's name and then its SKU;
      * {@link #DEFAULT} when no line carries one. An unknown marker is refused rather than silently ignored.
+     *
+     * @param maxLineNameLength the device's line name limit ({@code ReceiptProvider.maxLineNameLength()}); the app
+     *                          cuts every name to it via {@code ReceiptLineNames.normalize}, so a name landing
+     *                          exactly on the limit is checked for a marker truncated by that cut (see
+     *                          {@link #checkNameNotCutByLimit}) before its own marker search.
      */
-    static DevReceiptScenario fromLines(List<ReceiptLine> lines) {
+    static DevReceiptScenario fromLines(List<ReceiptLine> lines, int maxLineNameLength) {
         for (ReceiptLine line : lines) {
+            checkNameNotCutByLimit(line.name(), maxLineNameLength);
             Optional<DevReceiptScenario> scenario = fromText(line.name()).or(() -> fromText(line.sku()));
             if (scenario.isPresent()) {
                 return scenario.get();
@@ -83,6 +89,32 @@ enum DevReceiptScenario {
         }
         throw new ReceiptException("receipts-dev: unknown scenarioOverride '" + value.strip() + "'; expected one of "
                 + Arrays.toString(values()));
+    }
+
+    /**
+     * The app passes every line name through {@code ReceiptLineNames.normalize(name, maxLineNameLength)} before
+     * issuing, which silently cuts a name that lands exactly on the limit. A marker at the end of such a name can be
+     * cut to a shorter, valid-looking marker (or to a bare {@code SIM-RECEIPT-} prefix), which would otherwise
+     * resolve as a different scenario than the one actually requested. Refuse instead of guessing: if the name is
+     * exactly {@code maxLineNameLength} characters and its last space-separated word is a strict prefix of some
+     * marker (i.e. that marker starts with the word but is not equal to it), the word can only be a cut marker.
+     */
+    private static void checkNameNotCutByLimit(String name, int maxLineNameLength) {
+        if (name == null || name.length() != maxLineNameLength) {
+            return;
+        }
+        int lastSpace = name.lastIndexOf(' ');
+        String lastWord = (lastSpace < 0 ? name : name.substring(lastSpace + 1)).toUpperCase(Locale.ROOT);
+        if (lastWord.length() < 4) {
+            return;
+        }
+        for (DevReceiptScenario scenario : values()) {
+            if (scenario.marker != null && scenario.marker.startsWith(lastWord) && !scenario.marker.equals(lastWord)) {
+                throw new ReceiptValidationException("receipts-dev: scenario marker cut by the " + maxLineNameLength
+                        + "-character name limit: " + lastWord
+                        + "; put the marker at the start of the name or in the SKU");
+            }
+        }
     }
 
     private static Optional<DevReceiptScenario> fromText(String text) {
