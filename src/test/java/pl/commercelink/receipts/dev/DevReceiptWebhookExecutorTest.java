@@ -120,6 +120,22 @@ class DevReceiptWebhookExecutorTest {
     }
 
     @Test
+    void secretStoredWithTrailingWhitespaceIsStrippedBeforeVerifying() {
+        // given
+        Receipt stuck = book.issue("o-1:R1", DevReceiptScenario.STUCK);
+        String payload = stuck.providerReceiptId() + " FISCALISED";
+        String signature = DevReceiptWebhookExecutor.sign(payload, "s3cret");
+
+        // when
+        WebhookOutcome<Receipt> outcome = executor.execute(payload, new WebhookContext(
+                Map.of(DevReceiptWebhookExecutor.SIGNATURE_HEADER, signature),
+                Map.of("webhookSecret", "s3cret\n")));
+
+        // then
+        assertEquals(ReceiptState.FISCALISED, outcome.result().state());
+    }
+
+    @Test
     void blankSecretInConfigurationRejectsEveryCall() {
         // given
         Receipt stuck = book.issue("o-1:R1", DevReceiptScenario.STUCK);

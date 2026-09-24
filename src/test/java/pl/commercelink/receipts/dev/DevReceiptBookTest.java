@@ -20,10 +20,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class DevReceiptBookTest {
 
     private static final String KEY = "order-1:R1";
-    private static final String FIRST_ID = "dev-20260923T101500Z-000001";
-    private static final String FIRST_URL = "https://receipts-dev.local/r/" + FIRST_ID;
 
     private final DevReceiptBook book = new DevReceiptBook(DevRequests.CLOCK);
+    private final String firstId = "dev-" + book.bootStamp() + "-000001";
+    private final String firstUrl = "https://receipts-dev.local/r/" + firstId;
 
     @Test
     void defaultIsFiscalisedAtOnceWithLinkAndFiscalData() {
@@ -33,12 +33,21 @@ class DevReceiptBookTest {
         // then
         assertEquals(ReceiptState.FISCALISED, receipt.state());
         assertEquals(KEY, receipt.receiptKey());
-        assertEquals(FIRST_ID, receipt.providerReceiptId());
-        assertEquals(FIRST_URL, receipt.documentUrl());
-        assertEquals(new FiscalData("DEV00000001", "20260923T101500Z-000001", Instant.parse("2026-09-23T10:15:00Z")),
-                receipt.fiscal());
+        assertEquals(firstId, receipt.providerReceiptId());
+        assertEquals(firstUrl, receipt.documentUrl());
+        assertEquals(new FiscalData(null, null, Instant.parse("2026-09-23T10:15:00Z")), receipt.fiscal());
         assertEquals(receipt, book.find(KEY).orElseThrow());
-        assertEquals(receipt, book.fetch(FIRST_ID));
+        assertEquals(receipt, book.fetch(firstId));
+    }
+
+    @Test
+    void fiscalDataCarriesNullNumbersAsFakturowniaDoes() {
+        // when
+        Receipt receipt = book.issue(KEY, DevReceiptScenario.DEFAULT);
+
+        // then
+        assertNull(receipt.fiscal().receiptNumber());
+        assertNull(receipt.fiscal().cashRegisterUniqueNumber());
     }
 
     @Test
@@ -48,10 +57,24 @@ class DevReceiptBookTest {
         Receipt second = book.issue("b:R1", DevReceiptScenario.DEFAULT);
 
         // then
-        assertEquals("20260923T101500Z", book.bootStamp());
-        assertEquals("dev-20260923T101500Z-000001", first.providerReceiptId());
-        assertEquals("dev-20260923T101500Z-000002", second.providerReceiptId());
-        assertEquals("20260923T101500Z-000002", second.fiscal().receiptNumber());
+        assertTrue(book.bootStamp().matches("20260923T101500000Z-[0-9a-z]{4}"),
+                "boot stamp was " + book.bootStamp());
+        assertEquals("dev-" + book.bootStamp() + "-000001", first.providerReceiptId());
+        assertEquals("dev-" + book.bootStamp() + "-000002", second.providerReceiptId());
+        assertNull(second.fiscal().receiptNumber());
+    }
+
+    @Test
+    void booksCreatedInTheSameSecondNeverShareIds() {
+        // given
+        DevReceiptBook other = new DevReceiptBook(DevRequests.CLOCK);
+
+        // when
+        Receipt first = book.issue(KEY, DevReceiptScenario.DEFAULT);
+        Receipt second = other.issue(KEY, DevReceiptScenario.DEFAULT);
+
+        // then
+        assertNotEquals(first.providerReceiptId(), second.providerReceiptId());
     }
 
     @Test
@@ -83,7 +106,7 @@ class DevReceiptBookTest {
         assertEquals(ReceiptState.PENDING, foundBeforeFetch.state());
         assertEquals(ReceiptState.PENDING, firstFetch.state());
         assertEquals(ReceiptState.FISCALISED, secondFetch.state());
-        assertEquals(FIRST_URL, secondFetch.documentUrl());
+        assertEquals(firstUrl, secondFetch.documentUrl());
     }
 
     @Test
@@ -164,17 +187,17 @@ class DevReceiptBookTest {
         // given
         assertThrows(ReceiptOutcomeUnknownException.class,
                 () -> book.issue(KEY, DevReceiptScenario.UNKNOWN_UNORDERED));
-        book.fetch(FIRST_ID);
+        book.fetch(firstId);
 
         // when
         Receipt retried = book.issue(KEY, DevReceiptScenario.UNKNOWN_UNORDERED);
-        Receipt fetched = book.fetch(FIRST_ID);
+        Receipt fetched = book.fetch(firstId);
 
         // then
         assertEquals(ReceiptState.PENDING, retried.state());
-        assertEquals(FIRST_ID, retried.providerReceiptId());
+        assertEquals(firstId, retried.providerReceiptId());
         assertEquals(ReceiptState.FISCALISED, fetched.state());
-        assertEquals(FIRST_URL, fetched.documentUrl());
+        assertEquals(firstUrl, fetched.documentUrl());
         assertEquals(1, book.createCalls());
     }
 
@@ -191,7 +214,7 @@ class DevReceiptBookTest {
         assertEquals(ReceiptState.FISCALISED, issued.state());
         assertNull(issued.documentUrl());
         assertNull(found.documentUrl());
-        assertEquals(FIRST_URL, fetched.documentUrl());
+        assertEquals(firstUrl, fetched.documentUrl());
         assertEquals(issued.fiscal(), fetched.fiscal());
     }
 
@@ -237,7 +260,7 @@ class DevReceiptBookTest {
         assertEquals(ReceiptException.class, first.getClass());
         assertEquals(Optional.empty(), foundBetween);
         assertEquals(ReceiptState.FISCALISED, retried.state());
-        assertEquals(FIRST_URL, retried.documentUrl());
+        assertEquals(firstUrl, retried.documentUrl());
     }
 
     @Test
@@ -281,7 +304,7 @@ class DevReceiptBookTest {
 
         // then
         assertEquals(ReceiptState.FISCALISED, settled.state());
-        assertEquals(FIRST_URL, settled.documentUrl());
+        assertEquals(firstUrl, settled.documentUrl());
         assertEquals(settled, book.fetch(issued.providerReceiptId()));
     }
 
@@ -305,7 +328,7 @@ class DevReceiptBookTest {
                 () -> book.issue(KEY, DevReceiptScenario.UNKNOWN_UNORDERED));
 
         // when
-        Receipt settled = book.settle(FIRST_ID, DevReceiptBook.Event.FISCALISED).orElseThrow();
+        Receipt settled = book.settle(firstId, DevReceiptBook.Event.FISCALISED).orElseThrow();
 
         // then
         assertEquals(ReceiptState.PENDING, settled.state());
@@ -320,7 +343,7 @@ class DevReceiptBookTest {
         Receipt settled = book.settle(issued.providerReceiptId(), DevReceiptBook.Event.LINK).orElseThrow();
 
         // then
-        assertEquals(FIRST_URL, settled.documentUrl());
+        assertEquals(firstUrl, settled.documentUrl());
         assertEquals(issued.fiscal(), settled.fiscal());
     }
 
@@ -401,6 +424,5 @@ class DevReceiptBookTest {
 
         // then
         assertNotEquals(before.providerReceiptId(), after.providerReceiptId());
-        assertNotEquals(before.fiscal().receiptNumber(), after.fiscal().receiptNumber());
     }
 }

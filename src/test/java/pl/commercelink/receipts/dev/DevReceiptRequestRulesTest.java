@@ -53,15 +53,24 @@ class DevReceiptRequestRulesTest {
     }
 
     @Test
-    void zeroValueLineIsRefused() {
-        // given
+    void zeroValueLineCannotEvenBeBuilt() {
+        // given: receipts-api's ReceiptRequest.Builder.build() now refuses such a line itself, so receipts-dev no
+        // longer needs its own 0 PLN rule.
         ReceiptLine freeShipping = ReceiptLine.shipping("Dostawa gratis", Money.ZERO, VatRate.VAT_23).build();
-        ReceiptRequest request = request("o-1:R1", goods("Kabel HDMI 2m"), freeShipping);
+
+        // when / then
+        assertThrows(ReceiptValidationException.class, () -> request("o-1:R1", goods("Kabel HDMI 2m"), freeShipping));
+    }
+
+    @Test
+    void multiplePaymentFormsAreRefused() {
+        // given
+        ReceiptRequest request = DevRequests.requestWithTwoPaymentForms("o-1:R1", goods("Kabel HDMI 2m"));
 
         // when / then
         ReceiptValidationException e = assertThrows(ReceiptValidationException.class,
                 () -> DevReceiptRequestRules.check(request, 40));
-        assertTrue(e.getMessage().startsWith("line 1: "));
+        assertTrue(e.getMessage().contains("one payment"));
     }
 
     @Test

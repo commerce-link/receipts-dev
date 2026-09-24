@@ -15,8 +15,9 @@ import java.util.Set;
 
 /**
  * The refusals real providers give before any remote call, so the app meets them locally: a missing buyer e-mail,
- * a line worth 0 PLN (fiscal printers refuse it), a name the device cannot print as is, and an enum constant this
- * adapter does not know.
+ * more than one payment form on a receipt (Fakturownia allows only one), a name the device cannot print as is, and
+ * an enum constant this adapter does not know. A line worth 0 PLN is refused earlier, by
+ * {@code ReceiptRequest.Builder.build()} itself.
  */
 final class DevReceiptRequestRules {
 
@@ -48,13 +49,14 @@ final class DevReceiptRequestRules {
             ReceiptPayment payment = request.payments().get(i);
             require(FORMS.contains(payment.form()), "payment " + i + ": unsupported form " + payment.form());
         }
+        if (request.payments().stream().map(ReceiptPayment::form).distinct().count() > 1) {
+            throw new ReceiptValidationException("receipts-dev: one payment type per receipt, as Fakturownia requires");
+        }
     }
 
     private static void checkLine(String prefix, ReceiptLine line, int maxLineNameLength) {
         require(KINDS.contains(line.kind()), prefix + "unsupported kind " + line.kind());
         require(RATES.contains(line.vatRate()), prefix + "unsupported vatRate " + line.vatRate());
-        require(line.totalGross().isPositive(),
-                prefix + "a line worth 0 PLN is refused by fiscal printers; leave free lines out");
         require(line.name().equals(ReceiptLineNames.normalize(line.name(), maxLineNameLength)),
                 prefix + "name is not printable as is; pass it through ReceiptLineNames.normalize(name, "
                         + maxLineNameLength + "): " + line.name());

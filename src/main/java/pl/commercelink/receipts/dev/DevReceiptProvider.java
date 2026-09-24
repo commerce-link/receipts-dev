@@ -25,8 +25,10 @@ final class DevReceiptProvider implements ReceiptProvider {
     @Override
     public Receipt issue(ReceiptRequest request) {
         DevReceiptRequestRules.check(request, maxLineNameLength());
-        DevReceiptScenario fromLines = DevReceiptScenario.fromLines(request.lines(), maxLineNameLength());
-        DevReceiptScenario scenario = DevReceiptScenario.fromOverride(scenarioOverride).orElse(fromLines);
+        // The store override applies to every receipt "whatever the lines say" (useful for marketplace orders
+        // whose names cannot be controlled), so lines are only parsed for a scenario marker when it is empty.
+        DevReceiptScenario scenario = DevReceiptScenario.fromOverride(scenarioOverride)
+                .orElseGet(() -> DevReceiptScenario.fromLines(request.lines(), maxLineNameLength()));
         return book.issue(request.receiptKey(), scenario);
     }
 
@@ -43,11 +45,6 @@ final class DevReceiptProvider implements ReceiptProvider {
 
     @Override
     public boolean requiresBuyerEmail() {
-        return true;
-    }
-
-    @Override
-    public boolean pushesStatusUpdates() {
         return true;
     }
 }

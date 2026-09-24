@@ -43,4 +43,17 @@ final class DevRequests {
         }
         return builder.payment(ReceiptPayment.of(PaymentForm.TRANSFER, total)).build();
     }
+
+    /** A request paid with two payment forms (CARD 5.00 + TRANSFER 5.00), matching a 10.00 PLN line. */
+    static ReceiptRequest requestWithTwoPaymentForms(String receiptKey, ReceiptLine line) {
+        return ReceiptRequest.builder()
+                .receiptKey(receiptKey)
+                .orderId("order-" + receiptKey.replace(':', '-'))
+                .saleDate(LocalDateTime.of(2026, 9, 23, 12, 0))
+                .line(line)
+                .payment(ReceiptPayment.of(PaymentForm.CARD, Money.ofGrosze(500)))
+                .payment(ReceiptPayment.of(PaymentForm.TRANSFER, Money.ofGrosze(500)))
+                .buyer(ReceiptBuyer.builder().email("buyer@example.com").build())
+                .build();
+    }
 }

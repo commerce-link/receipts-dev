@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * The simulated provider backend: every receipt created during this JVM's lifetime, the keys that already had their
@@ -23,18 +24,18 @@ import java.util.Set;
  * on every call while loading descriptors once. Every operation runs under this object's monitor, so concurrent calls
  * with the same key — SQS listeners — create one receipt.
  *
- * <p>Ids and receipt numbers carry the moment this book was created, so they never repeat across a restart (unlike
- * a counter seeded from the wall clock). The receipts themselves are lost on restart: a fetch of an id from an
- * earlier run fails as "unknown receipt".
+ * <p>Ids carry the moment this book was created plus a random suffix, so two books never share an id even when
+ * created within the same millisecond (unlike a counter seeded from the wall clock alone). The receipts themselves
+ * are lost on restart: a fetch of an id from an earlier run fails as "unknown receipt".
  */
 final class DevReceiptBook {
 
-    static final String CASH_REGISTER_UNIQUE_NUMBER = "DEV00000001";
     static final String DOCUMENT_URL_PREFIX = "https://receipts-dev.local/r/";
     static final ReceiptFailure PRINTER_ERROR = new ReceiptFailure("fiscal_error", "Niepoprawna wartość brutto na pozycji 1");
 
-    private static final DateTimeFormatter BOOT_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'")
+    private static final DateTimeFormatter BOOT_STAMP = DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmssSSS'Z'")
             .withZone(ZoneOffset.UTC);
+    private static final int RANDOM_SUFFIX_LENGTH = 4;
 
     /** What the fiscal device, or an operator through the webhook, reports about a receipt. */
     enum Event {
@@ -58,7 +59,16 @@ final class DevReceiptBook {
 
     DevReceiptBook(Clock clock) {
         this.clock = clock;
-        this.bootStamp = BOOT_STAMP.format(clock.instant());
+        this.bootStamp = BOOT_STAMP.format(clock.instant()) + "-" + randomSuffix();
+    }
+
+    /** {@link #RANDOM_SUFFIX_LENGTH} base-36 characters, so books booted within the same millisecond still differ. */
+    private static String randomSuffix() {
+        StringBuilder suffix = new StringBuilder(RANDOM_SUFFIX_LENGTH);
+        for (int i = 0; i < RANDOM_SUFFIX_LENGTH; i++) {
+            suffix.append(Character.forDigit(ThreadLocalRandom.current().nextInt(36), 36));
+        }
+        return suffix.toString();
     }
 
     synchronized Receipt issue(String receiptKey, DevReceiptScenario scenario) {
@@ -114,9 +124,8 @@ final class DevReceiptBook {
         if (byProviderId.containsKey(providerReceiptId)) {
             return;
         }
-        // Contract-kit seam only: uses the caller-chosen providerReceiptId as the receipt number too; a real
-        // receipt's number is always <bootStamp>-<seq>, as create() gives it.
-        Entry entry = new Entry(receiptKey, providerReceiptId, providerReceiptId, DevReceiptScenario.STUCK);
+        // Contract-kit seam only: a real receipt only ever gets an id from create().
+        Entry entry = new Entry(receiptKey, providerReceiptId, DevReceiptScenario.STUCK);
         entry.ordered = true;
         register(entry);
     }
@@ -136,8 +145,8 @@ final class DevReceiptBook {
     private Entry create(String receiptKey, DevReceiptScenario scenario) {
         createCalls++;
         sequence++;
-        String number = bootStamp + "-" + String.format("%06d", sequence);
-        Entry entry = new Entry(receiptKey, "dev-" + number, number, scenario);
+        String providerReceiptId = "dev-" + bootStamp + "-" + String.format("%06d", sequence);
+        Entry entry = new Entry(receiptKey, providerReceiptId, scenario);
         switch (scenario) {
             case DEFAULT, UNKNOWN, UNAVAILABLE -> entry.fiscalise(true);
             case NOLINK, NOLINK_NEVER -> entry.fiscalise(false);
@@ -159,7 +168,6 @@ final class DevReceiptBook {
 
         private final String receiptKey;
         private final String providerReceiptId;
-        private final String receiptNumber;
         private final DevReceiptScenario scenario;
         private ReceiptState state = ReceiptState.PENDING;
         // Whether the receipt was sent for fiscalisation; only UNKNOWN_UNORDERED starts without it.
@@ -169,10 +177,9 @@ final class DevReceiptBook {
         private String documentUrl;
         private ReceiptFailure failure;
 
-        private Entry(String receiptKey, String providerReceiptId, String receiptNumber, DevReceiptScenario scenario) {
+        private Entry(String receiptKey, String providerReceiptId, DevReceiptScenario scenario) {
             this.receiptKey = receiptKey;
             this.providerReceiptId = providerReceiptId;
-            this.receiptNumber = receiptNumber;
             this.scenario = scenario;
         }
 
@@ -230,7 +237,8 @@ final class DevReceiptBook {
         private void fiscalise(boolean withLink) {
             state = ReceiptState.FISCALISED;
             ordered = true;
-            fiscal = new FiscalData(CASH_REGISTER_UNIQUE_NUMBER, receiptNumber, clock.instant());
+            // Both numbers are null, as Fakturownia's own response leaves them; the app falls back to the receipt key.
+            fiscal = new FiscalData(null, null, clock.instant());
             documentUrl = withLink ? DOCUMENT_URL_PREFIX + providerReceiptId : null;
         }
 

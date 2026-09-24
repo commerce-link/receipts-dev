@@ -40,7 +40,8 @@ final class DevReceiptWebhookExecutor implements WebhookExecutor<Receipt> {
     @Override
     public WebhookOutcome<Receipt> execute(String payload, WebhookContext context) {
         Map<String, String> config = context.providerConfig();
-        String secret = config == null ? null : config.get(DevReceiptsDescriptor.WEBHOOK_SECRET);
+        String rawSecret = config == null ? null : config.get(DevReceiptsDescriptor.WEBHOOK_SECRET);
+        String secret = rawSecret == null ? null : rawSecret.strip();
         String signature = context.header(SIGNATURE_HEADER);
         if (payload == null || secret == null || secret.isBlank() || signature == null
                 || !MessageDigest.isEqual(sign(payload, secret).getBytes(StandardCharsets.UTF_8),

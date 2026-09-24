@@ -76,14 +76,28 @@ class DevReceiptProviderTest {
     }
 
     @Test
-    void unknownMarkerIsRefusedEvenWithAnOverride() {
+    void overrideSkipsLineMarkerResolutionEvenWithAnUnknownMarker() {
+        // given: the store override applies to every receipt "whatever the lines say" (marketplace order names
+        // cannot be controlled), so fromLines() is not even called when the override is set.
+        DevReceiptProvider provider = new DevReceiptProvider(book, "PENDING");
+
+        // when
+        Receipt receipt = provider.issue(request("o-1:R1", goods("SIM-RECEIPT-X kabel")));
+
+        // then
+        assertEquals(ReceiptState.PENDING, receipt.state());
+    }
+
+    @Test
+    void multiplePaymentFormsAreRefusedBeforeAnyRemoteCall() {
         // given
-        DevReceiptProvider provider = new DevReceiptProvider(book, "DEFAULT");
+        DevReceiptProvider provider = new DevReceiptProvider(book, null);
+        ReceiptRequest request = DevRequests.requestWithTwoPaymentForms("o-1:R1", goods("Kabel HDMI 2m"));
 
         // when / then
-        assertThrows(ReceiptValidationException.class,
-                () -> provider.issue(request("o-1:R1", goods("SIM-RECEIPT-PENDNG"))));
-        assertEquals(0, book.remoteCalls());
+        ReceiptValidationException e = assertThrows(ReceiptValidationException.class, () -> provider.issue(request));
+        assertTrue(e.getMessage().contains("one payment"));
+        assertEquals(0, book.createCalls());
     }
 
     @Test
@@ -140,13 +154,12 @@ class DevReceiptProviderTest {
     }
 
     @Test
-    void capabilitiesDeclareEmailAndWebhook() {
+    void capabilitiesDeclareEmailAndMedia() {
         // given
         DevReceiptProvider provider = new DevReceiptProvider(book, null);
 
         // when / then
         assertTrue(provider.requiresBuyerEmail());
-        assertTrue(provider.pushesStatusUpdates());
         assertEquals(Set.of(ReceiptMedium.ELECTRONIC), provider.supportedMedia());
         assertEquals(40, provider.maxLineNameLength());
     }

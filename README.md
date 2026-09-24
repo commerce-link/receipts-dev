@@ -13,13 +13,15 @@ sibling of `invoicing-dev`.
 - **`fetch`**: the receipt's current state; this is where PENDING receipts progress and late links appear.
 - **Status webhook**: whoever sends it plays the fiscal device (see [Webhook](#webhook)).
 
-Every receipt is fiscalised on the fixed cash register `DEV00000001`. Ids look like `dev-20260923T101500Z-000042`
-and receipt numbers like `20260923T101500Z-000042`: the first part is the moment the JVM loaded the adapter, so they
-never repeat across a restart. `documentUrl` is a placeholder under `https://receipts-dev.local/r/` and does not open
-anything.
+Every fiscalised receipt carries `FiscalData` with `cashRegisterUniqueNumber` and `receiptNumber` both `null`, as
+Fakturownia's own response leaves them; the app falls back to the receipt key to identify the receipt (e.g. for an
+invoice issued for it in KSeF). Ids look like `dev-20260923T101500123Z-4f2a-000042`: the first part is the moment the
+JVM loaded the adapter plus a random suffix, so two adapters booted within the same millisecond never mint the same
+id, and ids never repeat across a restart. `documentUrl` is a placeholder under `https://receipts-dev.local/r/` and
+does not open anything.
 
 Capabilities: electronic receipts only, 40-character line names, **buyer e-mail required** (as with Fakturownia),
-pushes status updates.
+**one payment form per receipt** (as with Fakturownia), pushes status updates.
 
 ## Scenario markers
 
@@ -49,27 +51,31 @@ start of the name or in the SKU. A marker cut by that limit (`SIM-RECEIPT-UNKNOW
 `SIM-RECEIPT-UNKNOWN`, for example) is refused with `ReceiptValidationException` rather than silently resolving as
 a different, shorter scenario.
 
-An unknown or cut marker in the lines is refused even when `scenarioOverride` is set — the lines are always
-checked, whatever the store's override says.
+This marker search only runs when the store has no `scenarioOverride` (see below): with an override set, the lines
+are not parsed for a marker at all, so an unrelated `SIM-RECEIPT-*`-looking product name never breaks a marketplace
+order whose names cannot be controlled.
 
 ### Store override
 
 The optional configuration field `scenarioOverride` forces one scenario for **every** receipt of the store, whatever
-the lines say — useful for marketplace orders whose names cannot be controlled. Values are the scenario names:
-`DEFAULT`, `PENDING`, `FAIL`, `REJECT`, `UNKNOWN`, `UNKNOWN_UNORDERED`, `NOLINK`, `NOLINK_NEVER`, `STUCK`,
-`UNAVAILABLE` (case and hyphens ignored). An unknown value makes every `issue` throw a plain `ReceiptException`, like
-a real provider with a broken configuration.
+the lines say and **without even looking at them** — useful for marketplace orders whose names cannot be controlled.
+Values are the scenario names: `DEFAULT`, `PENDING`, `FAIL`, `REJECT`, `UNKNOWN`, `UNKNOWN_UNORDERED`, `NOLINK`,
+`NOLINK_NEVER`, `STUCK`, `UNAVAILABLE` (case and hyphens ignored). An unknown value makes every `issue` throw a plain
+`ReceiptException`, like a real provider with a broken configuration.
 
 ## Refusals
 
 Before anything is stored, `issue` refuses with `ReceiptValidationException`, as real providers do:
 
 - a missing buyer e-mail;
-- a line worth 0 PLN (fiscal printers refuse it — leave free lines out);
+- more than one payment form on a receipt — Fakturownia allows only one;
 - a line name that `ReceiptLineNames.normalize(name, 40)` would change (too long, characters outside Windows-1250,
   repeated spaces) — the app must normalise names before issuing;
 - an enum constant added to `receipts-api` after 0.1.0;
-- an unknown `SIM-RECEIPT-*` marker.
+- an unknown or cut `SIM-RECEIPT-*` marker, when no `scenarioOverride` is set (see above).
+
+A line worth 0 PLN is refused earlier still, by `ReceiptRequest.Builder.build()` in `receipts-api` itself — such a
+request cannot even be constructed, so `receipts-dev` no longer needs its own check for it.
 
 ## Webhook
 
@@ -106,6 +112,19 @@ exercises the push path.
 Receipts live in memory for the JVM's lifetime. After a restart, `fetch` of an earlier id throws `ReceiptException`
 ("unknown receipt") and `find` of an earlier key is empty; the app's polling of those attempts will keep failing until
 the operator issues again. Ids never collide with the earlier run.
+
+## Fakturownia outcomes not simulated
+
+This adapter is a development aid, not a full simulator of `receipts-fakturownia`. It never reproduces:
+
+- several receipts filed under one `receiptKey` (a rare Fakturownia race can leave more than one document behind
+  an order; the dev book is idempotent by key and always keeps exactly one);
+- a transport failure inside `fetch` or `find` themselves — only `issue` can simulate one (`SIM-RECEIPT-UNAVAILABLE`);
+  a network blip while polling or looking up an already-issued receipt is not reproduced;
+- a `cancelled` receipt state (Fakturownia reports it for a manually voided invoice; `ReceiptState` here only ever
+  moves `PENDING → FISCALISED | FAILED`);
+- a configurable maximum line-name length — `maxLineNameLength()` is fixed at 40, while a real fiscal printer's
+  limit depends on the device and cannot be dialled in for testing.
 
 ## Discovery
 
