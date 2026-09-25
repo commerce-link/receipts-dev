@@ -20,6 +20,7 @@ public class DevReceiptsDescriptor implements ReceiptProviderDescriptor {
     static final String NAME = "receipts-dev";
     static final String SCENARIO_OVERRIDE = "scenarioOverride";
     static final String WEBHOOK_SECRET = "webhookSecret";
+    static final String DOCUMENT_URL_BASE = "documentUrlBase";
 
     private final DevReceiptBook book;
 
@@ -48,12 +49,16 @@ public class DevReceiptsDescriptor implements ReceiptProviderDescriptor {
                         "puste = wg markera SIM-RECEIPT-* w nazwie/SKU; DEFAULT | PENDING | FAIL | REJECT | UNKNOWN | "
                                 + "UNKNOWN_UNORDERED | NOLINK | NOLINK_NEVER | STUCK | UNAVAILABLE — dotyczy każdego paragonu w sklepie"),
                 new ProviderField(WEBHOOK_SECRET, "Sekret webhooka (HMAC-SHA256)", ProviderField.FieldType.PASSWORD, false,
-                        "puste = każdy webhook odrzucany"));
+                        "puste = każdy webhook odrzucany"),
+                new ProviderField(DOCUMENT_URL_BASE, "Adres podglądu e-paragonu", ProviderField.FieldType.TEXT, false,
+                        "Opcjonalnie: początek linku do e-paragonu; do końca dopisywane jest id paragonu. Puste = "
+                                + "https://receipts-dev.local/r/ (link niedziałający)"));
     }
 
     @Override
     public ReceiptProvider create(Map<String, String> configuration) {
-        return new DevReceiptProvider(book, configuration == null ? null : configuration.get(SCENARIO_OVERRIDE));
+        return new DevReceiptProvider(book, configuration == null ? null : configuration.get(SCENARIO_OVERRIDE),
+                configuration == null ? null : configuration.get(DOCUMENT_URL_BASE));
     }
 
     @Override

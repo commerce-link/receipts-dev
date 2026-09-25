@@ -89,6 +89,44 @@ class DevReceiptProviderTest {
     }
 
     @Test
+    void configuredDocumentUrlBaseIsUsedForTheLink() {
+        // given
+        DevReceiptProvider provider = new DevReceiptProvider(book, null, "https://app.example.com/store/9/e-paragon/");
+
+        // when
+        Receipt receipt = provider.issue(request("o-1:R1", goods("Kabel")));
+
+        // then
+        assertEquals("https://app.example.com/store/9/e-paragon/" + receipt.providerReceiptId(), receipt.documentUrl());
+    }
+
+    @Test
+    void blankDocumentUrlBaseKeepsTheDefaultLink() {
+        // given
+        DevReceiptProvider provider = new DevReceiptProvider(book, null, "  ");
+
+        // when
+        Receipt receipt = provider.issue(request("o-1:R1", goods("Kabel")));
+
+        // then
+        assertEquals("https://receipts-dev.local/r/" + receipt.providerReceiptId(), receipt.documentUrl());
+    }
+
+    @Test
+    void invalidDocumentUrlBaseIsRefusedBeforeAnyRemoteCall() {
+        // given
+        DevReceiptProvider provider = new DevReceiptProvider(book, null, "ftp://app.example.com/e-paragon/");
+
+        // when
+        ReceiptException e = assertThrows(ReceiptException.class, () -> provider.issue(request("o-1:R1", goods("Kabel"))));
+
+        // then
+        assertEquals(ReceiptException.class, e.getClass());
+        assertTrue(e.getMessage().contains("documentUrlBase"));
+        assertEquals(0, book.remoteCalls());
+    }
+
+    @Test
     void multiplePaymentFormsAreRefusedBeforeAnyRemoteCall() {
         // given
         DevReceiptProvider provider = new DevReceiptProvider(book, null);

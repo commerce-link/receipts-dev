@@ -72,6 +72,16 @@ final class DevReceiptBook {
     }
 
     synchronized Receipt issue(String receiptKey, DevReceiptScenario scenario) {
+        return issue(receiptKey, scenario, DOCUMENT_URL_PREFIX);
+    }
+
+    /**
+     * As {@link #issue(String, DevReceiptScenario)}, but the receipt's e-receipt link — set now if the scenario
+     * fiscalises at once, or later, when a NOLINK fetch or a webhook LINK event adds it — is built from
+     * {@code documentUrlBase} instead of the default prefix. The base is fixed with the receipt at creation, so a
+     * retry or a later event always uses the base the issuing store had configured, whatever is passed here.
+     */
+    synchronized Receipt issue(String receiptKey, DevReceiptScenario scenario, String documentUrlBase) {
         remoteCalls++;
         Entry existing = byKey.get(receiptKey);
         if (existing != null) {
@@ -85,7 +95,7 @@ final class DevReceiptBook {
             throw new ReceiptException("receipts-dev: " + scenario.marker()
                     + " - provider unreachable, nothing was sent; retry with the same key");
         }
-        Entry entry = create(receiptKey, scenario);
+        Entry entry = create(receiptKey, scenario, documentUrlBase);
         if (scenario == DevReceiptScenario.UNKNOWN || scenario == DevReceiptScenario.UNKNOWN_UNORDERED) {
             throw new ReceiptOutcomeUnknownException("receipts-dev: " + scenario.marker()
                     + " - response lost after the receipt was stored; retry issue with the same key");
@@ -125,7 +135,7 @@ final class DevReceiptBook {
             return;
         }
         // Contract-kit seam only: a real receipt only ever gets an id from create().
-        Entry entry = new Entry(receiptKey, providerReceiptId, DevReceiptScenario.STUCK);
+        Entry entry = new Entry(receiptKey, providerReceiptId, DevReceiptScenario.STUCK, DOCUMENT_URL_PREFIX);
         entry.ordered = true;
         register(entry);
     }
@@ -142,11 +152,11 @@ final class DevReceiptBook {
         return bootStamp;
     }
 
-    private Entry create(String receiptKey, DevReceiptScenario scenario) {
+    private Entry create(String receiptKey, DevReceiptScenario scenario, String documentUrlBase) {
         createCalls++;
         sequence++;
         String providerReceiptId = "dev-" + bootStamp + "-" + String.format("%06d", sequence);
-        Entry entry = new Entry(receiptKey, providerReceiptId, scenario);
+        Entry entry = new Entry(receiptKey, providerReceiptId, scenario, documentUrlBase);
         switch (scenario) {
             case DEFAULT, UNKNOWN, UNAVAILABLE -> entry.fiscalise(true);
             case NOLINK, NOLINK_NEVER -> entry.fiscalise(false);
@@ -169,6 +179,9 @@ final class DevReceiptBook {
         private final String receiptKey;
         private final String providerReceiptId;
         private final DevReceiptScenario scenario;
+        // The issuing store's documentUrlBase (or the default), fixed with the receipt so a later link — a NOLINK
+        // fetch or a webhook LINK event — always uses the base the store had configured at issue time.
+        private final String documentUrlBase;
         private ReceiptState state = ReceiptState.PENDING;
         // Whether the receipt was sent for fiscalisation; only UNKNOWN_UNORDERED starts without it.
         private boolean ordered;
@@ -177,10 +190,11 @@ final class DevReceiptBook {
         private String documentUrl;
         private ReceiptFailure failure;
 
-        private Entry(String receiptKey, String providerReceiptId, DevReceiptScenario scenario) {
+        private Entry(String receiptKey, String providerReceiptId, DevReceiptScenario scenario, String documentUrlBase) {
             this.receiptKey = receiptKey;
             this.providerReceiptId = providerReceiptId;
             this.scenario = scenario;
+            this.documentUrlBase = documentUrlBase;
         }
 
         private Receipt retry() {
@@ -210,7 +224,7 @@ final class DevReceiptBook {
                     }
                 }
             } else if (state == ReceiptState.FISCALISED && documentUrl == null && scenario == DevReceiptScenario.NOLINK) {
-                documentUrl = DOCUMENT_URL_PREFIX + providerReceiptId;
+                documentUrl = documentUrlBase + providerReceiptId;
             }
         }
 
@@ -228,7 +242,7 @@ final class DevReceiptBook {
                 }
                 case LINK -> {
                     if (state == ReceiptState.FISCALISED && documentUrl == null) {
-                        documentUrl = DOCUMENT_URL_PREFIX + providerReceiptId;
+                        documentUrl = documentUrlBase + providerReceiptId;
                     }
                 }
             }
@@ -239,7 +253,7 @@ final class DevReceiptBook {
             ordered = true;
             // Both numbers are null, as Fakturownia's own response leaves them; the app falls back to the receipt key.
             fiscal = new FiscalData(null, null, clock.instant());
-            documentUrl = withLink ? DOCUMENT_URL_PREFIX + providerReceiptId : null;
+            documentUrl = withLink ? documentUrlBase + providerReceiptId : null;
         }
 
         private void fail() {

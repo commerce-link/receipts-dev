@@ -413,6 +413,53 @@ class DevReceiptBookTest {
     }
 
     @Test
+    void issueWithACustomBaseUsesItForTheLink() {
+        // given
+        String base = "https://app.example.com/store/9/e-paragon/";
+
+        // when
+        Receipt receipt = book.issue(KEY, DevReceiptScenario.DEFAULT, base);
+
+        // then
+        assertEquals(base + firstId, receipt.documentUrl());
+    }
+
+    @Test
+    void nolinkLateLinkUsesTheBaseFromIssue() {
+        // given
+        String base = "https://app.example.com/store/9/e-paragon/";
+        Receipt issued = book.issue(KEY, DevReceiptScenario.NOLINK, base);
+
+        // when
+        Receipt fetched = book.fetch(issued.providerReceiptId());
+
+        // then
+        assertEquals(base + issued.providerReceiptId(), fetched.documentUrl());
+    }
+
+    @Test
+    void settleLinkUsesTheBaseFromIssue() {
+        // given
+        String base = "https://app.example.com/store/9/e-paragon/";
+        Receipt issued = book.issue(KEY, DevReceiptScenario.NOLINK_NEVER, base);
+
+        // when
+        Receipt settled = book.settle(issued.providerReceiptId(), DevReceiptBook.Event.LINK).orElseThrow();
+
+        // then
+        assertEquals(base + issued.providerReceiptId(), settled.documentUrl());
+    }
+
+    @Test
+    void issueWithoutABaseKeepsTheDefaultPrefix() {
+        // when
+        Receipt receipt = book.issue(KEY, DevReceiptScenario.DEFAULT);
+
+        // then
+        assertEquals(firstUrl, receipt.documentUrl());
+    }
+
+    @Test
     void booksCreatedAtDifferentMomentsNeverShareIds() {
         // given
         DevReceiptBook afterRestart = new DevReceiptBook(java.time.Clock.fixed(

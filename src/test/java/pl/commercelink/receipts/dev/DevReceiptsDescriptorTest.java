@@ -33,14 +33,16 @@ class DevReceiptsDescriptorTest {
     }
 
     @Test
-    void declaresTwoOptionalFields() {
+    void declaresThreeOptionalFields() {
         // when
         List<ProviderField> fields = descriptor.configurationFields();
 
         // then
-        assertEquals(List.of("scenarioOverride", "webhookSecret"), fields.stream().map(ProviderField::key).toList());
+        assertEquals(List.of("scenarioOverride", "webhookSecret", "documentUrlBase"),
+                fields.stream().map(ProviderField::key).toList());
         assertEquals(ProviderField.FieldType.TEXT, fields.get(0).type());
         assertEquals(ProviderField.FieldType.PASSWORD, fields.get(1).type());
+        assertEquals(ProviderField.FieldType.TEXT, fields.get(2).type());
         assertTrue(fields.stream().noneMatch(ProviderField::required));
     }
 
@@ -75,6 +77,30 @@ class DevReceiptsDescriptorTest {
 
         // then
         assertEquals(ReceiptState.FISCALISED, receipt.state());
+    }
+
+    @Test
+    void documentUrlBaseFromConfigurationIsUsedForTheLink() {
+        // given
+        ReceiptProvider provider = descriptor.create(Map.of("documentUrlBase", "https://app.example.com/store/9/e-paragon/"));
+
+        // when
+        Receipt receipt = provider.issue(request("o-1:R1", goods("Kabel")));
+
+        // then
+        assertEquals("https://app.example.com/store/9/e-paragon/" + receipt.providerReceiptId(), receipt.documentUrl());
+    }
+
+    @Test
+    void blankDocumentUrlBaseKeepsTheDefaultLink() {
+        // given
+        ReceiptProvider provider = descriptor.create(Map.of());
+
+        // when
+        Receipt receipt = provider.issue(request("o-1:R1", goods("Kabel")));
+
+        // then
+        assertEquals("https://receipts-dev.local/r/" + receipt.providerReceiptId(), receipt.documentUrl());
     }
 
     @Test

@@ -17,8 +17,10 @@ Every fiscalised receipt carries `FiscalData` with `cashRegisterUniqueNumber` an
 Fakturownia's own response leaves them; the app falls back to the receipt key to identify the receipt (e.g. for an
 invoice issued for it in KSeF). Ids look like `dev-20260923T101500123Z-4f2a-000042`: the first part is the moment the
 JVM loaded the adapter plus a random suffix, so two adapters booted within the same millisecond never mint the same
-id, and ids never repeat across a restart. `documentUrl` is a placeholder under `https://receipts-dev.local/r/` and
-does not open anything.
+id, and ids never repeat across a restart. `documentUrl` is built as `documentUrlBase + providerReceiptId`; by
+default `documentUrlBase` is `https://receipts-dev.local/r/`, a placeholder that does not open anything. Point it at
+the app's dev-only e-receipt preview page with the store's `documentUrlBase` setting (see
+[Document URL base](#document-url-base)).
 
 Capabilities: electronic receipts only, 40-character line names, **buyer e-mail required** (as with Fakturownia),
 **one payment form per receipt** (as with Fakturownia), pushes status updates.
@@ -62,6 +64,18 @@ the lines say and **without even looking at them** — useful for marketplace or
 Values are the scenario names: `DEFAULT`, `PENDING`, `FAIL`, `REJECT`, `UNKNOWN`, `UNKNOWN_UNORDERED`, `NOLINK`,
 `NOLINK_NEVER`, `STUCK`, `UNAVAILABLE` (case and hyphens ignored). An unknown value makes every `issue` throw a plain
 `ReceiptException`, like a real provider with a broken configuration.
+
+### Document URL base
+
+The optional configuration field `documentUrlBase` sets where a receipt's `documentUrl` points: the link is always
+`documentUrlBase + providerReceiptId`. Blank or unset keeps the default `https://receipts-dev.local/r/`, which opens
+nothing. Point it at the app's dev-only e-receipt preview page, e.g.
+`https://localhost:8080/Store/9/Receipts/Preview/` (trailing slash, so the id is appended cleanly).
+
+The base is fixed with the receipt when it is first issued, so a link added later — a `SIM-RECEIPT-NOLINK` fetch or a
+webhook `LINK` event — always uses the base the issuing store had configured, even if the setting changes afterwards.
+A value that does not start with `http://` or `https://` makes every `issue` throw a plain `ReceiptException`, the
+same way an unknown `scenarioOverride` does.
 
 ## Refusals
 
@@ -144,8 +158,9 @@ Add it to the app's `dev` profile:
 </dependency>
 ```
 
-and select it for the demo store in the app's seeder, with a `webhookSecret` if the webhook should be tried. The
-app's receipts integration (provider factory, settings screen, queues) is a prerequisite.
+and select it for the demo store in the app's seeder, with a `webhookSecret` if the webhook should be tried and a
+`documentUrlBase` pointing at the app's e-receipt preview page if the link should open something. The app's receipts
+integration (provider factory, settings screen, queues) is a prerequisite.
 
 **Never ship this adapter to production.** It belongs to the `dev` profile only and must not appear in the
 deployment version manifest (`tools/deployment/app-versions.properties`).

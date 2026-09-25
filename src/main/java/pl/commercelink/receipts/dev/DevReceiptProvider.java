@@ -1,6 +1,7 @@
 package pl.commercelink.receipts.dev;
 
 import pl.commercelink.receipts.api.Receipt;
+import pl.commercelink.receipts.api.ReceiptException;
 import pl.commercelink.receipts.api.ReceiptKeys;
 import pl.commercelink.receipts.api.ReceiptProvider;
 import pl.commercelink.receipts.api.ReceiptRequest;
@@ -16,10 +17,16 @@ final class DevReceiptProvider implements ReceiptProvider {
 
     private final DevReceiptBook book;
     private final String scenarioOverride;
+    private final String documentUrlBase;
 
     DevReceiptProvider(DevReceiptBook book, String scenarioOverride) {
+        this(book, scenarioOverride, null);
+    }
+
+    DevReceiptProvider(DevReceiptBook book, String scenarioOverride, String documentUrlBase) {
         this.book = book;
         this.scenarioOverride = scenarioOverride;
+        this.documentUrlBase = documentUrlBase;
     }
 
     @Override
@@ -29,7 +36,25 @@ final class DevReceiptProvider implements ReceiptProvider {
         // whose names cannot be controlled), so lines are only parsed for a scenario marker when it is empty.
         DevReceiptScenario scenario = DevReceiptScenario.fromOverride(scenarioOverride)
                 .orElseGet(() -> DevReceiptScenario.fromLines(request.lines(), maxLineNameLength()));
-        return book.issue(request.receiptKey(), scenario);
+        return book.issue(request.receiptKey(), scenario, resolveDocumentUrlBase());
+    }
+
+    /**
+     * The store's {@code documentUrlBase}, defaulted and checked the way {@code scenarioOverride} is: resolved on
+     * every issue, before the book is touched. Blank or unset falls back to {@link DevReceiptBook#DOCUMENT_URL_PREFIX};
+     * anything else must start with {@code http://} or {@code https://}, or the configuration is refused like a real
+     * provider given a broken setting.
+     */
+    private String resolveDocumentUrlBase() {
+        if (documentUrlBase == null || documentUrlBase.isBlank()) {
+            return DevReceiptBook.DOCUMENT_URL_PREFIX;
+        }
+        String trimmed = documentUrlBase.strip();
+        if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
+            throw new ReceiptException("receipts-dev: invalid documentUrlBase '" + trimmed
+                    + "'; must start with http:// or https://");
+        }
+        return trimmed;
     }
 
     @Override
