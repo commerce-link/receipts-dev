@@ -82,7 +82,7 @@ same way an unknown `scenarioOverride` does.
 Before anything is stored, `issue` refuses with `ReceiptValidationException`, as real providers do:
 
 - a missing buyer e-mail;
-- more than one payment form on a receipt — Fakturownia allows only one;
+- more than one payment form on a receipt — Fakturownia allows only one (a receipt with no payments is fine: nothing paid yet);
 - a line name that `ReceiptLineNames.normalize(name, 40)` would change (too long, characters outside Windows-1250,
   repeated spaces) — the app must normalise names before issuing;
 - an enum constant added to `receipts-api` after 0.1.0;
